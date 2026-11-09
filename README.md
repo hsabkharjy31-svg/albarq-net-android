@@ -18,7 +18,7 @@
 - JDK 17
 - Android SDK Platform 36
 - Android Gradle Plugin 8.11.1 وGradle 8.14.3
-- Kotlin 2.2.21
+- Kotlin 2.3.21
 
 ## إعداد البناء
 
@@ -84,7 +84,7 @@ This placeholder will be replaced with a real device screenshot after the first 
 
 ## Requirements and build
 
-Requirements: Android Studio, JDK 17, Android SDK Platform 36, AGP 8.11.1, Gradle 8.14.3, and Kotlin 2.2.21.
+Requirements: Android Studio, JDK 17, Android SDK Platform 36, AGP 8.11.1, Gradle 8.14.3, and Kotlin 2.3.21.
 
 Copy `local.properties.example` to `local.properties`, configure `sdk.dir` and `API_BASE_URL`, then run:
 
