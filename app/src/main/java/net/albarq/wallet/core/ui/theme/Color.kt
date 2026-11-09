@@ -1,0 +1,11 @@
+package net.albarq.wallet.core.ui.theme
+import androidx.compose.ui.graphics.Color
+val AlbarqBlue=Color(0xFF0B63F6)
+val AlbarqBlueDark=Color(0xFF0644B0)
+val AlbarqAccent=Color(0xFFFFB300)
+val AlbarqSuccess=Color(0xFF16A34A)
+val AlbarqDanger=Color(0xFFDC2626)
+val AlbarqBackground=Color(0xFFF5F7FB)
+val AlbarqSurface=Color(0xFFFFFFFF)
+val AlbarqText=Color(0xFF172033)
+val AlbarqMuted=Color(0xFF667085)
