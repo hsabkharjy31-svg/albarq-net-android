@@ -20,7 +20,7 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
             return blocked("المصادر الخارجية غير متاحة في وضع المعاينة المحلي")
         }
         val path = Uri.decode(url.encodedPath ?: "/").trimStart('/')
-        if (path == "login" && url.getQueryParameter("var") == "callBack") return callbackResponse()
+        if (path == "login" && url.getQueryParameter("var") == "callBack") return callbackResponse(request.isForMainFrame)
         when (path) {
             "login" -> return pageOrFallback("login.html")
             "status" -> return pageOrFallback("status.html")
@@ -102,7 +102,7 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
         return response("text/html", rendered.toByteArray(Charsets.UTF_8))
     }
 
-    private fun callbackResponse(): WebResourceResponse {
+    private fun callbackResponse(mainFrame: Boolean): WebResourceResponse {
         val state = "{loggedIn:$loggedIn,username:${jsString(currentUsername)},error:${jsString(lastError)}}"
         val js = """
             (function () {
@@ -112,7 +112,12 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
               if (typeof window.albarqMikrotikCallback === 'function') window.albarqMikrotikCallback(state);
             })();
         """.trimIndent()
-        return response("application/javascript", js.toByteArray(Charsets.UTF_8))
+        return if (mainFrame) {
+            response("text/html", ("<!doctype html><html><meta charset='utf-8'><body><p>تم تنفيذ اختبار callback المحلي.</p><script>" +
+                js + "</script><a href='/login.html'>العودة</a></body></html>").toByteArray(Charsets.UTF_8))
+        } else {
+            response("application/javascript", js.toByteArray(Charsets.UTF_8))
+        }
     }
 
     private fun blocked(message: String) = response("text/plain", message.toByteArray(), 403, "Blocked")
