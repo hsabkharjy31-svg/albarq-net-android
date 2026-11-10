@@ -1,89 +1,181 @@
 package net.albarq.hotspotsimulator
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
-import android.webkit.JavascriptInterface
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import android.widget.*
+import android.view.Gravity
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
     private lateinit var files: HotspotFiles
-    private lateinit var web: WebView
-    private lateinit var log: TextView
-    private lateinit var client: PreviewClient
+    private lateinit var folderStatus: TextView
+    private lateinit var scanStatus: TextView
+    private lateinit var previewButton: TextView
     private val fileExecutor = Executors.newSingleThreadExecutor()
     private val prefs by lazy { getSharedPreferences("preview", MODE_PRIVATE) }
+    private val navy = Color.rgb(7, 19, 41)
+    private val surface = Color.rgb(17, 34, 64)
+    private val cyan = Color.rgb(56, 213, 255)
+    private val muted = Color.rgb(164, 181, 210)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        files = HotspotFiles(this, prefs.getString("tree", null)?.let { Uri.parse(it) })
+        window.statusBarColor = navy
+        window.navigationBarColor = navy
+        window.decorView.setBackgroundColor(navy)
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(14, 12, 14, 8)
-            setBackgroundColor(Color.rgb(245, 248, 255))
-        }
-        val title = TextView(this).apply {
-            text = "⚡ AL-BARQ NET\nمحاكي صفحات MikroTik Hotspot"
-            textSize = 21f
-            setTextColor(Color.rgb(13, 45, 105))
-            textAlignment = TextView.TEXT_ALIGNMENT_CENTER
-        }
-        root.addView(title, LinearLayout.LayoutParams(-1, 72))
-        root.addView(button("اختيار مجلد الهوتسبوت") { chooseHotspotFolder() })
-
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row.addView(button("فتح صفحة الدخول") { openPage("login") }, LinearLayout.LayoutParams(0, -2, 1f))
-        row.addView(button("تحديث المعاينة") { refreshFiles(openLoginAfterScan = true) }, LinearLayout.LayoutParams(0, -2, 1f))
-        root.addView(row)
-
-        val tests = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        tests.addView(button("محاكاة دخول ناجح") { client.simulateLogin(true); openPage("status") }, LinearLayout.LayoutParams(0, -2, 1f))
-        tests.addView(button("محاكاة دخول فاشل") { client.simulateLogin(false); openPage("login.html") }, LinearLayout.LayoutParams(0, -2, 1f))
-        tests.addView(button("اختبار callback") { openPage("login?var=callBack") }, LinearLayout.LayoutParams(0, -2, 1f))
-        root.addView(tests)
-        root.addView(button("فحص الصفحة / سجل الأخطاء") { showDiagnostics() })
-
-        log = TextView(this).apply {
-            text = "اختر مجلد صفحات الهوتسبوت للبدء.\nالمحاكاة محلية ولا تنشئ جلسة MikroTik حقيقية."
-            textSize = 13f
-            setTextColor(Color.DKGRAY)
-        }
-        root.addView(ScrollView(this).apply { addView(log) }, LinearLayout.LayoutParams(-1, 94))
-
-        web = WebView(this).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.allowFileAccess = false
-            settings.allowContentAccess = false
-            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            webChromeClient = WebChromeClient()
-        }
-        client = PreviewClient(files)
-        web.addJavascriptInterface(object {
-            @JavascriptInterface
-            fun submitLogin(username: String, password: String, destination: String) {
-                runOnUiThread {
-                    client.submitCredentials(username, password)
-                    if (username.isNotBlank() && password.isNotBlank()) openPage("status")
-                    else openPage("login.html")
-                }
-            }
-        }, "AlbarqPreview")
-        web.webViewClient = client
-        root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
-        setContentView(root)
+        files = HotspotFiles(this, prefs.getString("tree", null)?.let(Uri::parse))
+        buildDashboard()
 
         if (files.tree != null) {
-            log.text = "تم استعادة المجلد المحفوظ. جارٍ فحص الملفات..."
-            refreshFiles()
+            folderStatus.text = "تم حفظ مجلد القالب سابقاً"
+            scanStatus.text = "جارٍ التحقق من ملفات القالب..."
+            scanFolder(openWhenReady = false)
         }
     }
+
+    private fun buildDashboard() {
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(26))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(navy, Color.rgb(10, 28, 57), navy)
+            )
+        }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(page)
+        }
+
+        val brandRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        brandRow.addView(ImageView(this).apply {
+            setImageResource(R.mipmap.ic_launcher)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }, LinearLayout.LayoutParams(dp(58), dp(58)))
+        val brandText = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), 0, 0, 0)
+        }
+        brandText.addView(label("AL-BARQ NET", 19f, Color.WHITE, true))
+        brandText.addView(label("HOTSPOT STUDIO  •  ANDROID", 10f, cyan, true))
+        brandRow.addView(brandText, LinearLayout.LayoutParams(0, -2, 1f))
+        page.addView(brandRow, bottomParams(24))
+
+        val hero = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(22), dp(20), dp(22))
+            background = rounded(
+                intArrayOf(Color.rgb(30, 77, 139), Color.rgb(16, 43, 84)),
+                dp(22)
+            )
+        }
+        hero.addView(label("معاينة قوالب MikroTik", 24f, Color.WHITE, true), bottomParams(8))
+        hero.addView(label(
+            "افتح صفحات الهوتسبوت كصفحات ويب تفاعلية، مع تحميل ملفات CSS وJavaScript والصور المحلية.",
+            14f, Color.rgb(220, 232, 249), false
+        ))
+        page.addView(hero, bottomParams(18))
+
+        val folderCard = card()
+        folderCard.addView(label("مجلد ملفات الهوتسبوت", 16f, Color.WHITE, true), bottomParams(8))
+        folderStatus = label("لم يتم اختيار مجلد بعد", 13f, muted, false)
+        folderCard.addView(folderStatus, bottomParams(10))
+        folderCard.addView(actionButton("اختيار مجلد القالب", true) { chooseHotspotFolder() })
+        page.addView(folderCard, bottomParams(14))
+
+        val previewCard = card()
+        previewCard.addView(label("نافذة المعاينة", 16f, Color.WHITE, true), bottomParams(8))
+        previewCard.addView(label(
+            "ستُفتح المعاينة في شاشة مستقلة كاملة، وليست داخل لوحة التحكم.",
+            13f, muted, false
+        ), bottomParams(14))
+        previewButton = actionButton("فتح صفحة الدخول  ↗", true) { openPreview() }
+        previewButton.isEnabled = false
+        previewButton.alpha = 0.45f
+        previewCard.addView(previewButton, bottomParams(9))
+        previewCard.addView(actionButton("إعادة فحص الملفات", false) {
+            scanFolder(openWhenReady = false)
+        })
+        page.addView(previewCard, bottomParams(14))
+
+        val statusCard = card()
+        statusCard.addView(label("حالة الفحص", 15f, Color.WHITE, true), bottomParams(7))
+        scanStatus = label("اختر مجلد القالب لبدء الفحص.", 12f, muted, false)
+        statusCard.addView(scanStatus)
+        page.addView(statusCard, bottomParams(14))
+
+        page.addView(actionButton("عرض التشخيصات", false) { showDiagnostics() }, bottomParams(16))
+        page.addView(label(
+            "المحاكي يعرض صفحات القالب محلياً. لا ينفّذ أوامر RouterOS ولا ينشئ جلسة اتصال حقيقية.",
+            11f, muted, false
+        ))
+        setContentView(scroll)
+    }
+
+    private fun card() = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(16), dp(16), dp(16), dp(16))
+        background = rounded(surface, dp(18))
+    }
+
+    private fun label(textValue: String, size: Float, color: Int, bold: Boolean) =
+        TextView(this).apply {
+            text = textValue
+            textSize = size
+            setTextColor(color)
+            typeface = if (bold) Typeface.create("sans-serif", Typeface.BOLD)
+                else Typeface.create("sans-serif", Typeface.NORMAL)
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            textDirection = TextView.TEXT_DIRECTION_FIRST_STRONG
+            setLineSpacing(dp(3).toFloat(), 1f)
+        }
+
+    private fun actionButton(textValue: String, primary: Boolean, action: () -> Unit) =
+        TextView(this).apply {
+            text = textValue
+            textSize = 14f
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setTextColor(if (primary) navy else Color.WHITE)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = rounded(
+                if (primary) intArrayOf(cyan, Color.rgb(106, 231, 255))
+                else intArrayOf(Color.rgb(36, 57, 91), Color.rgb(27, 44, 73)),
+                dp(13)
+            )
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { if (isEnabled) action() }
+        }
+
+    private fun rounded(color: Int, radius: Int) =
+        GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = radius.toFloat()
+        }
+
+    private fun rounded(colors: IntArray, radius: Int) =
+        GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, colors).apply {
+            cornerRadius = radius.toFloat()
+        }
+
+    private fun bottomParams(bottom: Int) =
+        LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(bottom) }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun chooseHotspotFolder() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
@@ -95,7 +187,7 @@ class MainActivity : Activity() {
         try {
             startActivityForResult(intent, REQUEST_HOTSPOT_FOLDER)
         } catch (e: Exception) {
-            log.text = "تعذر فتح منتقي المجلدات: ${e.message ?: e.javaClass.simpleName}"
+            scanStatus.text = "تعذر فتح منتقي المجلدات: ${e.message ?: e.javaClass.simpleName}"
         }
     }
 
@@ -103,100 +195,82 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQUEST_HOTSPOT_FOLDER || resultCode != RESULT_OK) return
-
-        val uri = data?.data
-        if (uri == null) {
-            log.text = "لم يُرجع منتقي الملفات عنوان المجلد."
+        val uri = data?.data ?: run {
+            scanStatus.text = "لم يُرجع منتقي الملفات عنوان المجلد."
             return
         }
 
-        val readGrant = (data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        var persisted = false
         var permissionWarning = ""
+        val readGrant = data.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION
         if (readGrant != 0) {
             try {
                 contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                persisted = true
+                prefs.edit().putString("tree", uri.toString()).apply()
             } catch (e: SecurityException) {
-                permissionWarning = "تعذر حفظ إذن الوصول الدائم؛ قد تحتاج لاختيار المجلد مرة أخرى بعد إغلاق التطبيق."
+                permissionWarning = "إذن القراءة مؤقت؛ قد تحتاج إلى اختيار المجلد مجدداً بعد إغلاق التطبيق."
+                prefs.edit().remove("tree").apply()
             } catch (e: IllegalArgumentException) {
-                permissionWarning = "مزود الملفات لا يدعم حفظ الإذن الدائم؛ سيُستخدم الإذن الحالي مؤقتًا."
+                permissionWarning = "مزود الملفات لا يدعم حفظ الإذن الدائم؛ الإذن الحالي مؤقت."
+                prefs.edit().remove("tree").apply()
             }
         } else {
-            permissionWarning = "لم يمنح مزود الملفات إذن قراءة واضحًا؛ قد لا يمكن قراءة المجلد."
+            permissionWarning = "لم يمنح مزود الملفات إذن قراءة واضحاً."
+            prefs.edit().remove("tree").apply()
         }
 
         files.tree = uri
-        if (persisted) prefs.edit().putString("tree", uri.toString()).apply()
-        else prefs.edit().remove("tree").apply()
-
-        log.text = "تم اختيار المجلد. جارٍ فحص الملفات في الخلفية...\n$permissionWarning"
-        refreshFiles(openLoginAfterScan = true, permissionWarning = permissionWarning)
+        folderStatus.text = "تم تحديد مجلد القالب"
+        scanFolder(openWhenReady = true, permissionWarning = permissionWarning)
     }
 
-    private fun refreshFiles(openLoginAfterScan: Boolean = false, permissionWarning: String = "") {
-        val selectedTree = files.tree
-        if (selectedTree == null) {
-            log.text = "يرجى اختيار مجلد الهوتسبوت أولاً."
+    private fun scanFolder(openWhenReady: Boolean, permissionWarning: String = "") {
+        if (files.tree == null) {
+            scanStatus.text = "يرجى اختيار مجلد الهوتسبوت أولاً."
+            previewButton.isEnabled = false
+            previewButton.alpha = 0.45f
             return
         }
-        log.text = "جارٍ فحص ملفات مجلد الهوتسبوت..."
+        scanStatus.text = "جارٍ فحص ملفات HTML وCSS وJavaScript والصور..."
         fileExecutor.execute {
-            val paths = try {
-                files.index()
-            } catch (e: Exception) {
-                emptyList()
-            }
-            val warnings = files.scanWarnings
+            val paths = try { files.index() } catch (e: Exception) { emptyList() }
+            val hasLogin = paths.any { it.substringAfterLast('/').equals("login.html", true) }
+            val count = paths.size
+            val warnings = files.scanWarnings.toList()
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                val summary = buildString {
-                    append("اكتمل الفحص. عدد الملفات: ").append(paths.size)
+                previewButton.isEnabled = hasLogin
+                previewButton.alpha = if (hasLogin) 1f else 0.45f
+                scanStatus.text = buildString {
+                    append("اكتمل الفحص • ").append(count).append(" ملف")
+                    append(if (hasLogin) "\nتم العثور على login.html — المعاينة جاهزة."
+                        else "\nلم يتم العثور على login.html. اختر المجلد الذي يحتوي على صفحة الدخول.")
                     if (permissionWarning.isNotBlank()) append("\n").append(permissionWarning)
-                    if (warnings.isNotEmpty()) {
-                        append("\nتحذيرات الفهرسة:")
-                        warnings.take(5).forEach { append("\n• ").append(it) }
-                    }
-                    if (paths.isNotEmpty()) {
-                        append("\n").append(paths.take(12).joinToString("\n"))
-                    } else if (warnings.isEmpty()) {
-                        append("\nلم يتم العثور على ملفات قابلة للقراءة في المجلد المحدد.")
-                        append("\nتأكد من اختيار المجلد الذي يحتوي على login.html أو المجلد الأب الذي يحتوي عليه.")
-                    }
+                    if (warnings.isNotEmpty()) append("\nتحذيرات: ").append(warnings.size)
                 }
-                log.text = summary
-                if (openLoginAfterScan) openPage("login")
+                if (openWhenReady && hasLogin) openPreview()
             }
         }
     }
 
-    private fun button(label: String, action: () -> Unit) =
-        Button(this).apply { text = label; setOnClickListener { action() } }
-
-    private fun openPage(path: String) {
-        if (!::web.isInitialized) return
-        if (files.tree == null) {
-            log.text = "يرجى اختيار مجلد الهوتسبوت أولاً."
-            return
-        }
-        // The SAF tree has already been indexed on a worker thread. Never walk the
-        // provider tree synchronously from a WebView/UI callback.
-        web.loadUrl("https://hotspot.local/" + path.trimStart('/'))
+    private fun openPreview() {
+        if (files.tree == null) return
+        startActivity(Intent(this, PreviewActivity::class.java))
     }
 
     private fun showDiagnostics() {
-        val items = if (::client.isInitialized) client.diagnostics.toList() else emptyList()
-        val fileWarnings = files.scanWarnings
-        val all = items.map { "[${it.kind}] ${it.path}: ${it.message}" } + fileWarnings
-        log.text = if (all.isEmpty()) "لم تُسجل أخطاء حتى الآن." else all.joinToString("\n")
+        val warnings = files.scanWarnings
+        val message = if (warnings.isEmpty()) {
+            "لم تُسجل تحذيرات فهرسة.\n\nإذا لم تظهر الصفحة، تأكد من أن المجلد المختار يحتوي على login.html ومجلدات css وjs وimg."
+        } else warnings.joinToString("\n")
+        AlertDialog.Builder(this)
+            .setTitle("تشخيص ملفات القالب")
+            .setMessage(message)
+            .setPositiveButton("إغلاق", null)
+            .show()
     }
 
     override fun onDestroy() {
         fileExecutor.shutdownNow()
-        if (::web.isInitialized) {
-            web.removeJavascriptInterface("AlbarqPreview")
-            web.destroy()
-        }
         super.onDestroy()
     }
 
