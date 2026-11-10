@@ -31,3 +31,7 @@
 3. جرّب إرسال النموذج مع حقل فارغ؛ يجب البقاء في صفحة الدخول وإظهار رسالة خطأ إذا كان القالب يعرض `$(error)`.
 4. اضغط زر اختبار callback للتحقق من المسار المحلي.
 5. افتح رابط ملف غير موجود ثم راجع سجل التشخيصات.
+
+
+## Live preview note
+After selecting a folder, the app now indexes the selected tree and automatically opens the local `/login` preview. If `login.html` is nested one or more directories below the selected folder, that directory is treated as the template root.
