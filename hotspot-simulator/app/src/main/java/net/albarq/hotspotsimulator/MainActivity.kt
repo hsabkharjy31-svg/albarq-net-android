@@ -254,7 +254,8 @@ class MainActivity : Activity() {
 
     private fun openPreview() {
         if (files.tree == null) return
-        val uri = files.tree ?: return\n        startActivity(Intent(this, PreviewActivity::class.java).putExtra(PreviewActivity.EXTRA_TREE, uri.toString()))
+        val uri = files.tree ?: return
+        startActivity(Intent(this, PreviewActivity::class.java).putExtra(PreviewActivity.EXTRA_TREE, uri.toString()))
     }
 
     private fun showDiagnostics() {
