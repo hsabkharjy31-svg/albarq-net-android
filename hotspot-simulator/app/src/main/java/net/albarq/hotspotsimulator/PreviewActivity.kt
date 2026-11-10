@@ -89,8 +89,8 @@ class PreviewActivity : Activity() {
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             webChromeClient = object : WebChromeClient() {
                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                    progress.progress = newProgress
-                    progress.visibility = if (newProgress >= 100) View.GONE else View.VISIBLE
+                    this@PreviewActivity.progress.progress = newProgress
+                    this@PreviewActivity.progress.visibility = if (newProgress >= 100) View.GONE else View.VISIBLE
                 }
 
                 override fun onConsoleMessage(message: android.webkit.ConsoleMessage?): Boolean {
