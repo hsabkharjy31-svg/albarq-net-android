@@ -1,4 +1,4 @@
-name: Hotspot Simulator Android Build
+name: Hotspot Simulator Android Build # live-preview auto-open validation
 on:
   push:
     branches: [feature/hotspot-simulator]
