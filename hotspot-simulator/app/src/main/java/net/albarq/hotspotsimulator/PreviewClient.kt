@@ -65,7 +65,7 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
     fun submitCredentials(username: String, password: String) {
         currentUsername = username.trim().ifBlank { "demo" }
         // Card-only MikroTik templates commonly submit the card number in both fields.
-        loggedIn = username.isNotBlank() && (password.isNotBlank() || password.isEmpty())
+        loggedIn = username.isNotBlank()
         lastError = if (loggedIn) "" else "أدخل رقم الكرت لمحاكاة الدخول."
     }
 
