@@ -33,7 +33,7 @@ class PreviewActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = navy
         window.navigationBarColor = navy
-        files = HotspotFiles(this, prefs.getString("tree", null)?.let { Uri.parse(it) })
+        val selectedTree = intent.getStringExtra(EXTRA_TREE) ?: prefs.getString("tree", null)\n        files = HotspotFiles(this, selectedTree?.let { Uri.parse(it) })
         buildPreviewScreen()
         indexAndLoad()
     }
@@ -175,7 +175,7 @@ class PreviewActivity : Activity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-    override fun onDestroy() {
+    companion object {\n        const val EXTRA_TREE = "net.albarq.hotspotsimulator.EXTRA_TREE"\n    }\n\n    override fun onDestroy() {
         fileExecutor.shutdownNow()
         if (::web.isInitialized) {
             web.removeJavascriptInterface("AlbarqPreview")
