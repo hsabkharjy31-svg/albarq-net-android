@@ -8,6 +8,7 @@ import java.io.ByteArrayOutputStream
 
 class HotspotFiles(private val context: Context, @Volatile var tree: Uri? = null) {
     @Volatile private var cache: Map<String, Uri> = emptyMap()
+    @Volatile private var contentRoot: String = ""
     @Volatile var scanWarnings: List<String> = emptyList()
         private set
 
@@ -25,6 +26,7 @@ class HotspotFiles(private val context: Context, @Volatile var tree: Uri? = null
     fun index(): List<String> {
         val root = tree ?: run {
             cache = emptyMap()
+            contentRoot = ""
             scanWarnings = emptyList()
             return emptyList()
         }
@@ -41,6 +43,10 @@ class HotspotFiles(private val context: Context, @Volatile var tree: Uri? = null
         }
 
         cache = found.toMap()
+        val loginPath = found.keys.firstOrNull { it.equals("login.html", ignoreCase = true) }
+            ?: found.keys.filter { it.substringAfterLast('/').equals("login.html", ignoreCase = true) }
+                .minByOrNull { it.count { ch -> ch == '/' } }
+        contentRoot = loginPath?.substringBeforeLast('/', "").orEmpty()
         scanWarnings = warnings.toList()
         return found.keys.sorted()
     }
@@ -103,7 +109,9 @@ class HotspotFiles(private val context: Context, @Volatile var tree: Uri? = null
         val normalized = path.trimStart('/')
         val parts = normalized.split('/')
         if (parts.any { it == ".." || it.isBlank() }) return null
-        val uri = cache[parts.joinToString("/")] ?: return null
+        val requested = parts.joinToString("/")
+        val key = if (contentRoot.isBlank()) requested else "$contentRoot/$requested"
+        val uri = cache[key] ?: return null
 
         return try {
             context.contentResolver.openInputStream(uri)?.use { input ->
