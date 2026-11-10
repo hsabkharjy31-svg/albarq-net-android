@@ -17,11 +17,15 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
         val req = request ?: return null
         val url = req.url
         if (url.host != "hotspot.local") {
-            diagnostics.add(Diagnostic("EXTERNAL", url.toString(), "طلب خارجي؛ لا يضمن المحاكي توفره دون إنترنت"))
+            diagnostics.add(Diagnostic("EXTERNAL", url.toString(), "طلب خارجي؛ تم حجبه في المعاينة دون اتصال بالإنترنت"))
             return blocked("المصادر الخارجية غير متاحة في وضع المعاينة المحلي")
         }
+
         val path = Uri.decode(url.encodedPath ?: "/").trimStart('/')
-        if (path == "login" && url.getQueryParameter("var") == "callBack") return callbackResponse(req.isForMainFrame)
+        if (path == "login" && url.getQueryParameter("var") == "callBack") {
+            return callbackResponse(req.isForMainFrame)
+        }
+
         when (path) {
             "login" -> return pageOrFallback("login.html")
             "status" -> return pageOrFallback("status.html")
@@ -32,13 +36,24 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
             }
             "error" -> return pageOrFallback("error.html")
         }
+
         val actual = if (path.isBlank()) "login.html" else path
         val data = files.read(actual)
         if (data == null) {
-            diagnostics.add(Diagnostic("404", actual, "لم يتم العثور على الملف. تحقق من المسار وحالة الأحرف."))
-            return response("text/plain", ("404 — الملف غير موجود: " + actual).toByteArray(), 404, "Not Found")
+            diagnostics.add(Diagnostic("404", actual, "لم يتم العثور على الملف. تحقق من المجلد المختار والمسار وحالة الأحرف."))
+            return if (req.isForMainFrame && isHtmlPath(actual)) {
+                response("text/html", missingHtml(actual).toByteArray(Charsets.UTF_8), 404, "Not Found")
+            } else {
+                response("text/plain", ("404 — الملف غير موجود: " + actual).toByteArray(Charsets.UTF_8), 404, "Not Found")
+            }
         }
-        return if (files.mime(actual).contains("html")) html(data, actual) else response(files.mime(actual), data)
+
+        val mime = files.mime(actual)
+        return if (mime == "text/html" || mime == "application/xhtml+xml") {
+            html(data, actual)
+        } else {
+            response(mime, data)
+        }
     }
 
     fun simulateLogin(success: Boolean) {
@@ -49,9 +64,9 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
 
     fun submitCredentials(username: String, password: String) {
         currentUsername = username.trim().ifBlank { "demo" }
-        // Local deterministic simulation only: any non-empty pair succeeds; credentials are never retained.
-        loggedIn = username.isNotBlank() && password.isNotBlank()
-        lastError = if (loggedIn) "" else "أدخل اسم المستخدم وكلمة المرور لمحاكاة الدخول."
+        // Card-only MikroTik templates commonly submit the card number in both fields.
+        loggedIn = username.isNotBlank() && (password.isNotBlank() || password.isEmpty())
+        lastError = if (loggedIn) "" else "أدخل رقم الكرت لمحاكاة الدخول."
     }
 
     override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
@@ -60,13 +75,40 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
         )
     }
 
+    override fun onReceivedHttpError(
+        view: WebView?,
+        request: WebResourceRequest?,
+        errorResponse: WebResourceResponse?
+    ) {
+        if (request?.isForMainFrame == true) diagnostics.add(
+            Diagnostic("HTTP", request.url.toString(), "HTTP ${errorResponse?.statusCode ?: "unknown"}")
+        )
+    }
+
     private fun pageOrFallback(name: String): WebResourceResponse {
         val data = files.read(name)
         if (data != null) return html(data, name)
-        diagnostics.add(Diagnostic("MISSING", name, "ملف المسار غير موجود؛ تم إنشاء صفحة بديلة"))
-        return response("text/html", ("<html dir='rtl'><meta charset='utf-8'><body><h3>" + name +
-            "</h3><p>الملف غير موجود</p><a href='/login.html'>العودة</a></body></html>").toByteArray())
+        diagnostics.add(Diagnostic("MISSING", name, "ملف الصفحة غير موجود؛ تم إنشاء صفحة HTML بديلة"))
+        return response("text/html", missingHtml(name).toByteArray(Charsets.UTF_8))
     }
+
+    private fun missingHtml(name: String) = """
+        <!doctype html>
+        <html lang="ar" dir="rtl">
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+        <title>تعذر فتح الصفحة</title>
+        <style>
+          body{margin:0;min-height:100vh;display:grid;place-items:center;background:#071329;color:#fff;
+          font-family:system-ui,sans-serif;padding:24px;box-sizing:border-box}
+          main{max-width:520px;background:#112240;border:1px solid #29466e;border-radius:22px;padding:26px}
+          h2{color:#38d5ff}p{line-height:1.8;color:#d6e2f5}code{direction:ltr;display:block;overflow-wrap:anywhere}
+          a{display:inline-block;margin-top:12px;color:#071329;background:#38d5ff;padding:12px 18px;border-radius:12px;text-decoration:none;font-weight:700}
+        </style></head>
+        <body><main><h2>لم يتم العثور على صفحة القالب</h2>
+        <p>تعذر العثور على الملف التالي داخل المجلد الذي اخترته:</p><code>${escapeHtml(name)}</code>
+        <p>اختر المجلد الذي يحتوي على login.html، مع مجلدات css وjs وimg.</p>
+        <a href="/login">إعادة المحاولة</a></main></body></html>
+    """.trimIndent()
 
     private fun html(data: ByteArray, path: String): WebResourceResponse {
         val base = TemplateEngine.defaults()
@@ -80,6 +122,7 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
             base.flags + mapOf("trial" to false, "logged-in" to loggedIn)
         )
         var rendered = TemplateEngine.render(String(data, Charsets.UTF_8), context)
+
         if (path.substringAfterLast('/').equals("login.html", ignoreCase = true)) {
             val bridgeScript = """
                 <script>
@@ -88,17 +131,20 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
                     var form = event.target;
                     if (!form || !form.elements || !form.elements.username || !form.elements.password) return;
                     event.preventDefault();
+                    var username = form.elements.username.value || '';
+                    var password = form.elements.password.value || username;
                     var dst = form.elements.dst ? form.elements.dst.value : '';
                     if (window.AlbarqPreview && window.AlbarqPreview.submitLogin) {
-                      window.AlbarqPreview.submitLogin(form.elements.username.value, form.elements.password.value, dst);
+                      window.AlbarqPreview.submitLogin(username, password, dst);
                     }
                   }, true);
                 })();
                 </script>
             """.trimIndent()
             val closingBody = rendered.lastIndexOf("</body>", ignoreCase = true)
-            rendered = if (closingBody >= 0) rendered.substring(0, closingBody) + bridgeScript + rendered.substring(closingBody)
-            else rendered + bridgeScript
+            rendered = if (closingBody >= 0) {
+                rendered.substring(0, closingBody) + bridgeScript + rendered.substring(closingBody)
+            } else rendered + bridgeScript
         }
         return response("text/html", rendered.toByteArray(Charsets.UTF_8))
     }
@@ -114,16 +160,31 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
             })();
         """.trimIndent()
         return if (mainFrame) {
-            response("text/html", ("<!doctype html><html><meta charset='utf-8'><body><p>تم تنفيذ اختبار callback المحلي.</p><script>" +
-                js + "</script><a href='/login.html'>العودة</a></body></html>").toByteArray(Charsets.UTF_8))
+            response("text/html", ("<!doctype html><html lang='ar' dir='rtl'><meta charset='utf-8'><body><p>تم تنفيذ callback المحلي.</p><script>" +
+                js + "</script><a href='/login'>العودة إلى صفحة الدخول</a></body></html>").toByteArray(Charsets.UTF_8))
         } else {
             response("application/javascript", js.toByteArray(Charsets.UTF_8))
         }
     }
 
-    private fun blocked(message: String) = response("text/plain", message.toByteArray(), 403, "Blocked")
-    private fun response(mime: String, bytes: ByteArray, status: Int = 200, reason: String = "OK") =
-        WebResourceResponse(mime, "UTF-8", status, reason, mapOf("Cache-Control" to "no-store"), ByteArrayInputStream(bytes))
+    private fun isHtmlPath(path: String) =
+        path.endsWith(".html", true) || path.endsWith(".htm", true) ||
+            path.equals("login", true) || path.equals("status", true)
 
-    private fun jsString(value: String) = "'" + value.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "") + "'"
+    private fun escapeHtml(value: String) = value
+        .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        .replace("\"", "&quot;").replace("'", "&#39;")
+
+    private fun blocked(message: String) =
+        response("text/plain", message.toByteArray(Charsets.UTF_8), 403, "Blocked")
+
+    private fun response(mime: String, bytes: ByteArray, status: Int = 200, reason: String = "OK") =
+        WebResourceResponse(
+            mime, "UTF-8", status, reason,
+            mapOf("Cache-Control" to "no-store", "X-Content-Type-Options" to "nosniff"),
+            ByteArrayInputStream(bytes)
+        )
+
+    private fun jsString(value: String) =
+        "'" + value.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "") + "'"
 }
