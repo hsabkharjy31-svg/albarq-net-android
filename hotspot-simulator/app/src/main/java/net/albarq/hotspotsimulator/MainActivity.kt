@@ -38,7 +38,7 @@ class MainActivity : Activity() {
         root.addView(button("اختيار مجلد الهوتسبوت") { chooseHotspotFolder() })
 
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row.addView(button("فتح صفحة الدخول") { openPage("login.html") }, LinearLayout.LayoutParams(0, -2, 1f))
+        row.addView(button("فتح صفحة الدخول") { openPage("login") }, LinearLayout.LayoutParams(0, -2, 1f))
         row.addView(button("تحديث المعاينة") { refreshFiles(openLoginAfterScan = true) }, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(row)
 
@@ -131,7 +131,7 @@ class MainActivity : Activity() {
         else prefs.edit().remove("tree").apply()
 
         log.text = "تم اختيار المجلد. جارٍ فحص الملفات في الخلفية...\n$permissionWarning"
-        refreshFiles(permissionWarning = permissionWarning)
+        refreshFiles(openLoginAfterScan = true, permissionWarning = permissionWarning)
     }
 
     private fun refreshFiles(openLoginAfterScan: Boolean = false, permissionWarning: String = "") {
@@ -161,10 +161,11 @@ class MainActivity : Activity() {
                         append("\n").append(paths.take(12).joinToString("\n"))
                     } else if (warnings.isEmpty()) {
                         append("\nلم يتم العثور على ملفات قابلة للقراءة في المجلد المحدد.")
+                        append("\nتأكد من اختيار المجلد الذي يحتوي على login.html أو المجلد الأب الذي يحتوي عليه.")
                     }
                 }
                 log.text = summary
-                if (openLoginAfterScan && paths.isNotEmpty()) openPage("login.html")
+                if (openLoginAfterScan) openPage("login")
             }
         }
     }
