@@ -41,6 +41,7 @@ class MainActivity : Activity() {
         val tests = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         tests.addView(button("محاكاة دخول ناجح") { client.simulateLogin(true); openPage("status") }, LinearLayout.LayoutParams(0, -2, 1f))
         tests.addView(button("محاكاة دخول فاشل") { client.simulateLogin(false); openPage("login.html") }, LinearLayout.LayoutParams(0, -2, 1f))
+        tests.addView(button("اختبار callback") { openPage("login?var=callBack") }, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(tests)
         root.addView(button("فحص الصفحة / سجل الأخطاء") { showDiagnostics() })
         log = TextView(this).apply {
