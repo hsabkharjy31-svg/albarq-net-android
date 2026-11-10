@@ -4,6 +4,7 @@ import android.net.Uri
 import android.webkit.*
 import java.io.ByteArrayInputStream
 import java.util.concurrent.CopyOnWriteArrayList
+import org.json.JSONObject
 
 data class Diagnostic(val kind: String, val path: String, val message: String)
 
@@ -22,8 +23,8 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
         }
 
         val path = Uri.decode(url.encodedPath ?: "/").trimStart('/')
-        if (path == "login" && url.getQueryParameter("var") == "callBack") {
-            return callbackResponse(req.isForMainFrame)
+        if (path in setOf("login", "status", "logout") && url.getQueryParameter("var") == "callBack") {
+            return callbackResponse(path, req.isForMainFrame)
         }
 
         when (path) {
@@ -150,21 +151,38 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
         return response("text/html", rendered.toByteArray(Charsets.UTF_8))
     }
 
-    private fun callbackResponse(mainFrame: Boolean): WebResourceResponse {
-        val state = "{loggedIn:$loggedIn,username:${jsString(currentUsername)},error:${jsString(lastError)}}"
-        val js = """
-            (function () {
-              var state = $state;
-              window.mikrotikPreview = state;
-              window.dispatchEvent(new CustomEvent('mikrotik-preview-ready', { detail: state }));
-              if (typeof window.albarqMikrotikCallback === 'function') window.albarqMikrotikCallback(state);
-            })();
-        """.trimIndent()
+    private fun callbackResponse(path: String, mainFrame: Boolean): WebResourceResponse {
+        if (path == "logout") {
+            loggedIn = false
+            lastError = ""
+        }
+        val action = when (path) {
+            "status" -> "onStatusQuery"
+            "logout" -> "onLoggedOut"
+            else -> if (loggedIn) "onLoggedIn" else "onLoginStart"
+        }
+        val payload = JSONObject().apply {
+            put("action", action)
+            put("logged_in", loggedIn)
+            put("username", currentUsername)
+            put("error", lastError)
+            put("ip", "192.0.2.10")
+            put("mac", "02:00:00:00:00:10")
+            put("uptime", "00:12:34")
+            put("session_time_left", if (loggedIn) "00:47:26" else "")
+            put("remain_bytes_total", if (loggedIn) "104857600" else "")
+            put("bytes_in", "1048576")
+            put("bytes_out", "2097152")
+            put("sspeed", "512K/1024K_Uoff")
+            put("update", "_Uoff")
+        }
         return if (mainFrame) {
-            response("text/html", ("<!doctype html><html lang='ar' dir='rtl'><meta charset='utf-8'><body><p>تم تنفيذ callback المحلي.</p><script>" +
-                js + "</script><a href='/login'>العودة إلى صفحة الدخول</a></body></html>").toByteArray(Charsets.UTF_8))
+            val state = payload.toString().replace("<", "\\u003c")
+            response("text/html", ("<!doctype html><html lang='ar' dir='rtl'><meta charset='utf-8'><body>" +
+                "<p>تم تنفيذ callback المحلي.</p><script>window.mikrotikPreview=$state;</script>" +
+                "<a href='/login'>العودة إلى صفحة الدخول</a></body></html>").toByteArray(Charsets.UTF_8))
         } else {
-            response("application/javascript", js.toByteArray(Charsets.UTF_8))
+            response("application/json", payload.toString().toByteArray(Charsets.UTF_8))
         }
     }
 
