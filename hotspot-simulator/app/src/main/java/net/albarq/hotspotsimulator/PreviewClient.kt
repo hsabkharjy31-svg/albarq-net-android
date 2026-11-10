@@ -131,6 +131,7 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
                     var form = event.target;
                     if (!form || !form.elements || !form.elements.username || !form.elements.password) return;
                     event.preventDefault();
+                    event.stopImmediatePropagation();
                     var username = form.elements.username.value || '';
                     var password = form.elements.password.value || username;
                     var dst = form.elements.dst ? form.elements.dst.value : '';
