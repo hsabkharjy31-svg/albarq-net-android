@@ -14,13 +14,14 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
     private var lastError = ""
 
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-        val url = request?.url ?: return null
+        val req = request ?: return null
+        val url = req.url
         if (url.host != "hotspot.local") {
             diagnostics.add(Diagnostic("EXTERNAL", url.toString(), "طلب خارجي؛ لا يضمن المحاكي توفره دون إنترنت"))
             return blocked("المصادر الخارجية غير متاحة في وضع المعاينة المحلي")
         }
         val path = Uri.decode(url.encodedPath ?: "/").trimStart('/')
-        if (path == "login" && url.getQueryParameter("var") == "callBack") return callbackResponse(request.isForMainFrame)
+        if (path == "login" && url.getQueryParameter("var") == "callBack") return callbackResponse(req.isForMainFrame)
         when (path) {
             "login" -> return pageOrFallback("login.html")
             "status" -> return pageOrFallback("status.html")
