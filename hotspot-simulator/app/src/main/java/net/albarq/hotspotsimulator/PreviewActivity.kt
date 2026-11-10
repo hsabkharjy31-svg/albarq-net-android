@@ -108,8 +108,16 @@ class PreviewActivity : Activity() {
             fun submitLogin(username: String, password: String, destination: String) {
                 runOnUiThread {
                     client.submitCredentials(username, password)
-                    if (username.isNotBlank()) openPage("status")
-                    else openPage("login")
+                    if (username.isBlank()) {
+                        openPage("login")
+                    } else {
+                        // Prefer the template's own single-page transition when available.
+                        web.evaluateJavascript(
+                            "(function(){try{if(typeof window.onLoggedIn==='function'){window.onLoggedIn({logged_in:true});return true;}}catch(e){}return false;})()"
+                        ) { result ->
+                            if (result != "true") openPage("status")
+                        }
+                    }
                 }
             }
         }, "AlbarqPreview")
