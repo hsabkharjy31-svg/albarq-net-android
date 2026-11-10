@@ -72,7 +72,8 @@ class PreviewActivity : Activity() {
         }
         root.addView(progress, LinearLayout.LayoutParams(-1, dp(3)))
 
-        client = PreviewClient(files)\n        web = WebView(this).apply {
+        client = PreviewClient(files)
+        web = WebView(this).apply {
             setBackgroundColor(Color.WHITE)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -101,7 +102,6 @@ class PreviewActivity : Activity() {
                 }
             }
         }
-        client = PreviewClient(files)
         web.addJavascriptInterface(object {
             @JavascriptInterface
             fun submitLogin(username: String, password: String, destination: String) {
