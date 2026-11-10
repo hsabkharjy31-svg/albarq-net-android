@@ -18,11 +18,6 @@ class HotspotFiles(private val context: Context, @Volatile var tree: Uri? = null
         private const val MAX_FILE_BYTES = 24 * 1024 * 1024
     }
 
-    /**
-     * Indexes the selected SAF tree. Providers are inconsistent, so a broken or
-     * inaccessible child directory is recorded and skipped rather than crashing the Activity.
-     * Call from a worker thread; the resulting immutable cache is safe for WebView reads.
-     */
     fun index(): List<String> {
         val root = tree ?: run {
             cache = emptyMap()
@@ -34,7 +29,6 @@ class HotspotFiles(private val context: Context, @Volatile var tree: Uri? = null
         val found = linkedMapOf<String, Uri>()
         val warnings = mutableListOf<String>()
         val visitedDirectories = mutableSetOf<String>()
-
         try {
             val rootDocumentId = DocumentsContract.getTreeDocumentId(root)
             walk(root, rootDocumentId, "", 0, found, visitedDirectories, warnings)
@@ -70,7 +64,6 @@ class HotspotFiles(private val context: Context, @Volatile var tree: Uri? = null
                 DocumentsContract.Document.COLUMN_DISPLAY_NAME,
                 DocumentsContract.Document.COLUMN_MIME_TYPE
             )
-
             context.contentResolver.query(children, projection, null, null, null)?.use { cursor ->
                 val idColumn = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
                 val nameColumn = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
@@ -79,21 +72,18 @@ class HotspotFiles(private val context: Context, @Volatile var tree: Uri? = null
                     warnings.add("مزود الملفات أعاد بيانات مجلد غير مكتملة: $prefix")
                     return@use
                 }
-
                 while (cursor.moveToNext() && found.size < MAX_FILES) {
                     try {
                         val childId = cursor.getString(idColumn) ?: continue
                         val name = cursor.getString(nameColumn)?.trim() ?: continue
                         if (name.isBlank() || name == "." || name == ".." ||
                             name.contains('/') || name.contains('\\')) continue
-
                         val childMime = cursor.getString(mimeColumn)
                         val relativePath = if (prefix.isEmpty()) name else "$prefix/$name"
                         if (childMime == DocumentsContract.Document.MIME_TYPE_DIR) {
                             walk(treeUri, childId, relativePath, depth + 1, found, visitedDirectories, warnings)
                         } else {
-                            val documentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
-                            found[relativePath] = documentUri
+                            found[relativePath] = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
                         }
                     } catch (e: Exception) {
                         warnings.add("تجاوز عنصرًا تعذر قراءته داخل $prefix: ${e.message ?: e.javaClass.simpleName}")
@@ -109,8 +99,7 @@ class HotspotFiles(private val context: Context, @Volatile var tree: Uri? = null
         val normalized = path.trimStart('/')
         val parts = normalized.split('/')
         if (parts.any { it == ".." || it.isBlank() }) return null
-        val requested = parts.joinToString("/")
-        val key = if (contentRoot.isBlank()) requested else "$contentRoot/$requested"
+        val key = if (contentRoot.isBlank()) normalized else "$contentRoot/$normalized"
         val uri = cache[key] ?: return null
 
         return try {
@@ -137,14 +126,27 @@ class HotspotFiles(private val context: Context, @Volatile var tree: Uri? = null
     }
 
     fun mime(path: String): String {
-        val ext = path.substringAfterLast('.', "").lowercase()
-        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: when (ext) {
-            "js" -> "application/javascript"
-            "woff2" -> "font/woff2"
-            "woff" -> "font/woff"
-            "ttf" -> "font/ttf"
+        return when (path.substringAfterLast('.', "").lowercase()) {
+            "html", "htm" -> "text/html"
+            "xhtml" -> "application/xhtml+xml"
+            "css" -> "text/css"
+            "js", "mjs" -> "application/javascript"
+            "json", "map" -> "application/json"
             "svg" -> "image/svg+xml"
-            else -> "application/octet-stream"
+            "png" -> "image/png"
+            "jpg", "jpeg" -> "image/jpeg"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            "ico" -> "image/x-icon"
+            "woff" -> "font/woff"
+            "woff2" -> "font/woff2"
+            "ttf" -> "font/ttf"
+            "otf" -> "font/otf"
+            "mp4" -> "video/mp4"
+            "mp3" -> "audio/mpeg"
+            else -> MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(path.substringAfterLast('.', "").lowercase())
+                ?: "application/octet-stream"
         }
     }
 }
