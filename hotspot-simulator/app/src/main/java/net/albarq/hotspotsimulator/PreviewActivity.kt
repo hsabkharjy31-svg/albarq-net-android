@@ -33,7 +33,7 @@ class PreviewActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = navy
         window.navigationBarColor = navy
-        files = HotspotFiles(this, prefs.getString("tree", null)?.let(Uri::parse))
+        files = HotspotFiles(this, prefs.getString("tree", null)?.let { Uri.parse(it) })
         buildPreviewScreen()
         indexAndLoad()
     }
@@ -72,7 +72,7 @@ class PreviewActivity : Activity() {
         }
         root.addView(progress, LinearLayout.LayoutParams(-1, dp(3)))
 
-        web = WebView(this).apply {
+        client = PreviewClient(files)\n        web = WebView(this).apply {
             setBackgroundColor(Color.WHITE)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
