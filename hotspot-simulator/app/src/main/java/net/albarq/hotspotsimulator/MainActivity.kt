@@ -33,7 +33,7 @@ class MainActivity : Activity() {
         window.navigationBarColor = navy
         window.decorView.setBackgroundColor(navy)
 
-        files = HotspotFiles(this, prefs.getString("tree", null)?.let(Uri::parse))
+        files = HotspotFiles(this, prefs.getString("tree", null)?.let { Uri.parse(it) })
         buildDashboard()
 
         if (files.tree != null) {
