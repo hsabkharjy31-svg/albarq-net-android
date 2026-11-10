@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebView
+import android.webkit.JavascriptInterface
 import android.widget.*
 
 class MainActivity : Activity() {
@@ -57,6 +58,16 @@ class MainActivity : Activity() {
             webChromeClient = WebChromeClient()
         }
         client = PreviewClient(files)
+        web.addJavascriptInterface(object {
+            @JavascriptInterface
+            fun submitLogin(username: String, password: String, destination: String) {
+                runOnUiThread {
+                    client.submitCredentials(username, password)
+                    if (username.isNotBlank() && password.isNotBlank()) openPage("status")
+                    else openPage("login.html")
+                }
+            }
+        }, "AlbarqPreview")
         web.webViewClient = client
         root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
