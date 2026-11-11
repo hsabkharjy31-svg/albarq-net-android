@@ -130,7 +130,7 @@ class PreviewActivity : Activity() {
                         "if(window.mikrotikPreview.keepSinglePage===true)return true;}" +
                         "try{if(typeof window.onLoggedIn==='function'){" +
                         "return window.onLoggedIn(state)===true;}}catch(error){console.error(error);}" +
-                        "return false;})()
+                        "return false;})()"
                     web.evaluateJavascript(callback) { result ->
                         // A template can keep its single-page layout by setting
                         // window.mikrotikPreview.keepSinglePage = true in its event handler,
