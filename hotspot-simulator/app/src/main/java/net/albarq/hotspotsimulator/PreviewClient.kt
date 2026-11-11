@@ -261,7 +261,7 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
             "trial" to "no",
             "plain-passwd" to "yes",
             "ssl-login" to "yes",
-            "session-timeout" to if (loggedIn) "1h" else "",
+            "session-timeout" to if (loggedIn) formatDuration(remaining) else "",
             "session-timeout-secs" to if (loggedIn) remaining.toString() else "0",
             "session-time-left" to if (loggedIn) formatDuration(remaining) else "",
             "session-time-left-secs" to if (loggedIn) remaining.toString() else "0",

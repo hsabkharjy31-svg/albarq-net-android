@@ -34,19 +34,17 @@ class TemplateEngineTest {
             flags = mapOf("logged-in" to true, "trial" to false)
         )
 
-        val source = String.join(
-            "",
-            "$(if logged-in == 'yes')",
-            "ONLINE-",
-            "$(if session-time-left != 0)",
-            "HAS-TIME",
-            "$(else)",
-            "NO-TIME",
-            "$(endif)",
-            "$(else)",
-            "OFFLINE",
-            "$(endif)"
-        )
+        val source =
+            "$(if logged-in == 'yes')" +
+                "ONLINE-" +
+                "$(if session-time-left != 0)" +
+                "HAS-TIME" +
+                "$(else)" +
+                "NO-TIME" +
+                "$(endif)" +
+                "$(else)" +
+                "OFFLINE" +
+                "$(endif)"
 
         assertEquals("ONLINE-HAS-TIME", TemplateEngine.render(source, context))
     }
