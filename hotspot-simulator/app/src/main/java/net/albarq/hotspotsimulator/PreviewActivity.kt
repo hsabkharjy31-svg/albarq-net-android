@@ -113,6 +113,9 @@ class PreviewActivity : Activity() {
                     val accepted = client.submitCredentials(username, password, destination)
                     if (!accepted) {
                         val state = client.stateJson()
+                        .replace("<", "\\u003c")
+                        .replace(">", "\\u003e")
+                        .replace("&", "\\u0026")
                         web.evaluateJavascript(
                             "if(window.mikrotikPreview){window.mikrotikPreview.state=$state;" +
                                 "window.mikrotikPreview.dispatch('mikrotik-preview-login-error',$state);}",
@@ -123,6 +126,9 @@ class PreviewActivity : Activity() {
                     }
 
                     val state = client.stateJson()
+                        .replace("<", "\\u003c")
+                        .replace(">", "\\u003e")
+                        .replace("&", "\\u0026")
                     val callback = "(function(){var state=$state;" +
                         "if(window.mikrotikPreview){window.mikrotikPreview.state=state;" +
                         "window.mikrotikPreview.keepSinglePage=false;" +

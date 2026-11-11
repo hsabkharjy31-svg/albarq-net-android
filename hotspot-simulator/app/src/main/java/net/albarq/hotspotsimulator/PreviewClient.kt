@@ -324,17 +324,31 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
         }
     }
 
-    private fun bridgeScript(): String = """
+    private fun bridgeScript(): String {
+        val safeState = stateJson()
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+            .replace("&", "\\u0026")
+        return """
         <script id="albarq-preview-bridge">
         (function () {
           if (window.__albarqPreviewInstalled) return;
           window.__albarqPreviewInstalled = true;
 
           var api = window.mikrotikPreview = window.mikrotikPreview || {};
+          api.state = __INITIAL_STATE__;
+          api.keepSinglePage = false;
           api.dispatch = function (name, detail) {
-            try { document.dispatchEvent(new CustomEvent(name, { detail: detail || {} })); }
-            catch (error) { console.error('Preview event failed', error); }
+            try {
+              document.dispatchEvent(new CustomEvent(name, {
+                detail: detail || {},
+                bubbles: true
+              }));
+            } catch (error) { console.error('Preview event failed', error); }
           };
+          document.addEventListener('DOMContentLoaded', function () {
+            api.dispatch('mikrotik-preview-ready', api.state);
+          }, { once: true });
           api.requestCallback = function (path, callback) {
             var target = path || window.location.pathname;
             var join = target.indexOf('?') >= 0 ? '&' : '?';
@@ -394,7 +408,8 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
           };
         })();
         </script>
-    """.trimIndent()
+    """.trimIndent().replace("__INITIAL_STATE__", safeState)
+    }
 
     private fun captivePortalApiResponse(): WebResourceResponse {
         val state = stateObject()
