@@ -27,6 +27,7 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
         private const val MAX_DIAGNOSTICS = 200
     }
 
+    @Synchronized
     fun recordDiagnostic(kind: String, path: String, message: String) {
         if (diagnostics.size >= MAX_DIAGNOSTICS) {
             diagnostics.removeAt(0)
@@ -34,32 +35,63 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
         diagnostics.add(Diagnostic(kind, path, message))
     }
 
+    @Suppress("UNUSED_PARAMETER")
     @Synchronized
     fun submitCredentials(username: String, password: String, destination: String = ""): Boolean {
-        val candidate = username.trim().ifBlank { password.trim() }
+        expireSessionIfNeeded()
+        val candidate = username.trim()
         if (candidate.isBlank()) {
             lastError = "أدخل اسم المستخدم أو رقم الكرت لمحاكاة الدخول."
-            recordDiagnostic("LOGIN", "/login", "رفض المحاكاة لأن حقلي اسم المستخدم وكلمة المرور فارغان.")
+            recordDiagnostic("LOGIN", "/login", "رُفضت المحاكاة لأن اسم المستخدم فارغ؛ لم تُستخدم كلمة المرور كاسم مستخدم.")
             return false
         }
 
+        if (destination.isNotBlank()) updateOriginalDestination(destination)
         currentUsername = candidate
-        originalDestination = destination.trim().ifBlank { originalDestination }
         loggedIn = true
         loginBy = "http-pap"
         lastError = ""
         sessionStartedAtMs = System.currentTimeMillis()
-        // The password is intentionally not retained or written to diagnostics.
+        // The password is intentionally neither validated nor retained in local preview mode.
+        recordDiagnostic("LOGIN", "/login", "بدأت جلسة دخول محلية تجريبية للمستخدم.")
         return true
     }
 
     @Synchronized
+    private fun updateOriginalDestination(destination: String) {
+        val candidate = destination.trim()
+        if (candidate.isBlank()) return
+        val uri = runCatching { Uri.parse(candidate) }.getOrNull()
+        val scheme = uri?.scheme?.lowercase(Locale.US)
+        if (uri == null || scheme !in setOf("http", "https") || uri.host.isNullOrBlank()) {
+            recordDiagnostic("DESTINATION", "/login", "تم تجاهل وجهة تحويل غير صالحة؛ يُسمح بروابط HTTP وHTTPS فقط.")
+            return
+        }
+        originalDestination = uri.toString()
+    }
+
+    @Synchronized
     private fun logout() {
+        val hadSession = loggedIn
         loggedIn = false
         currentUsername = ""
         loginBy = ""
         lastError = ""
         sessionStartedAtMs = 0L
+        if (hadSession) {
+            recordDiagnostic("LOGOUT", "/logout", "انتهت جلسة المعاينة المحلية.")
+        }
+    }
+
+    @Synchronized
+    private fun expireSessionIfNeeded() {
+        if (!loggedIn || sessionStartedAtMs <= 0L || elapsedSeconds() < SESSION_LIMIT_SECONDS) return
+        loggedIn = false
+        currentUsername = ""
+        loginBy = ""
+        sessionStartedAtMs = 0L
+        lastError = "انتهت مدة الجلسة التجريبية بعد ساعة."
+        recordDiagnostic("SESSION", "/status", lastError)
     }
 
     @Synchronized
@@ -67,6 +99,7 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
 
     @Synchronized
     private fun stateObject(): JSONObject {
+        expireSessionIfNeeded()
         val elapsed = elapsedSeconds()
         val remaining = if (loggedIn) (SESSION_LIMIT_SECONDS - elapsed).coerceAtLeast(0L) else 0L
         return JSONObject()
@@ -118,7 +151,11 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
             return blocked("المصادر الخارجية غير متاحة في وضع المعاينة المحلي.")
         }
 
+        expireSessionIfNeeded()
         val path = Uri.decode(url.encodedPath ?: "").trimStart('/')
+        if (path == "login") {
+            url.getQueryParameter("dst")?.let { updateOriginalDestination(it) }
+        }
         if (path.split('/').any { it == ".." }) {
             recordDiagnostic("PATH", path, "تم حجب مسار يتجاوز مجلد القالب.")
             return blocked("مسار غير مسموح.")
@@ -159,9 +196,9 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
                         else pageOrFallback("fstatus.html", "login.html")
 
             "logout" -> if (loggedIn) {
-                val page = pageOrFallback("logout.html", "login.html")
+                // Render the logout page against the post-logout state.
                 logout()
-                page
+                pageOrFallback("logout.html", "login.html")
             } else {
                 pageOrFallback("flogout.html", "login.html")
             }
@@ -239,6 +276,7 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
 
     @Synchronized
     private fun contextForPage(): TemplateEngine.Context {
+        expireSessionIfNeeded()
         val base = TemplateEngine.defaults()
         val elapsed = elapsedSeconds()
         val remaining = if (loggedIn) (SESSION_LIMIT_SECONDS - elapsed).coerceAtLeast(0L) else 0L

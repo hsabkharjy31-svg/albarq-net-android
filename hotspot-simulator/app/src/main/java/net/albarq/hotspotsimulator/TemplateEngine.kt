@@ -17,8 +17,63 @@ object TemplateEngine {
         var branchMatched: Boolean
     )
 
-    private val placeholder = Regex("""\$\(([^)]*)\)""")
+    private data class PlaceholderMatch(
+        val start: Int,
+        val endExclusive: Int,
+        val body: String,
+        val text: String
+    )
+
     private val expressionToken = Regex("""\s*(==|!=|&&|\|\||[()!]|'(?:\\.|[^'])*'|"(?:\\.|[^"])*"|[^\s()=!&|]+)""")
+
+    /**
+     * Scans RouterOS placeholders while respecting parentheses and quoted strings
+     * inside conditions, e.g. $(if (logged-in == 'yes' && (trial || error))).
+     */
+    private fun findPlaceholders(source: String): List<PlaceholderMatch> {
+        val matches = mutableListOf<PlaceholderMatch>()
+        var searchFrom = 0
+
+        while (searchFrom < source.length) {
+            val start = source.indexOf("$(", searchFrom)
+            if (start < 0) break
+
+            var cursor = start + 2
+            var depth = 1
+            var quote: Char? = null
+            var escaped = false
+
+            while (cursor < source.length && depth > 0) {
+                val ch = source[cursor]
+                if (quote != null) {
+                    when {
+                        escaped -> escaped = false
+                        ch == '\\' -> escaped = true
+                        ch == quote -> quote = null
+                    }
+                } else {
+                    when (ch) {
+                        '\'', '"' -> quote = ch
+                        '(' -> depth++
+                        ')' -> depth--
+                    }
+                }
+                cursor++
+            }
+
+            if (depth != 0) break
+            matches.add(
+                PlaceholderMatch(
+                    start = start,
+                    endExclusive = cursor,
+                    body = source.substring(start + 2, cursor - 1).trim(),
+                    text = source.substring(start, cursor)
+                )
+            )
+            searchFrom = cursor
+        }
+        return matches
+    }
 
     fun render(source: String, context: Context): String =
         renderDetailed(source, context).html
@@ -30,12 +85,12 @@ object TemplateEngine {
         var active = true
         var cursor = 0
 
-        for (match in placeholder.findAll(source)) {
-            if (active && match.range.first > cursor) {
-                output.append(source.substring(cursor, match.range.first))
+        for (match in findPlaceholders(source)) {
+            if (active && match.start > cursor) {
+                output.append(source.substring(cursor, match.start))
             }
 
-            val body = match.groupValues[1].trim()
+            val body = match.body
             when {
                 body.startsWith("if ") -> {
                     val hit = if (active) {
@@ -49,7 +104,7 @@ object TemplateEngine {
                 body.startsWith("elif ") -> {
                     val frame = stack.lastOrNull()
                     if (frame == null) {
-                        if (active) output.append(match.value)
+                        if (active) output.append(match.text)
                         warnings.add("كتلة elif بلا if مقابل.")
                     } else {
                         val hit = if (frame.parentActive && !frame.branchMatched) {
@@ -64,7 +119,7 @@ object TemplateEngine {
                 body == "else" -> {
                     val frame = stack.lastOrNull()
                     if (frame == null) {
-                        if (active) output.append(match.value)
+                        if (active) output.append(match.text)
                         warnings.add("كتلة else بلا if مقابل.")
                     } else {
                         frame.active = frame.parentActive && !frame.branchMatched
@@ -76,27 +131,27 @@ object TemplateEngine {
                 body == "endif" -> {
                     val frame = stack.removeLastOrNull()
                     if (frame == null) {
-                        if (active) output.append(match.value)
+                        if (active) output.append(match.text)
                         warnings.add("كتلة endif بلا if مقابل.")
                     } else {
                         active = frame.parentActive
                     }
                 }
 
-                body.isBlank() -> if (active) output.append(match.value)
+                body.isBlank() -> if (active) output.append(match.text)
 
                 else -> if (active) {
                     val value = context.values[body]
                     if (value != null) {
                         output.append(value)
                     } else {
-                        output.append(match.value)
+                        output.append(match.text)
                         warnings.add("متغير RouterOS غير معروف أو غير مدعوم: " + body)
                     }
                 }
             }
 
-            cursor = match.range.last + 1
+            cursor = match.endExclusive
         }
 
         if (active && cursor < source.length) {

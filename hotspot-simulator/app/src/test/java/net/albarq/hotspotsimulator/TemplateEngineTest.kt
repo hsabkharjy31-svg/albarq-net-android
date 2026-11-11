@@ -61,4 +61,16 @@ class TemplateEngineTest {
 
         assertEquals("B", TemplateEngine.render(source, context))
     }
+    @Test
+    fun supportsNestedParenthesesInsideRouterOsConditions() {
+        val context = TemplateEngine.Context(
+            values = mapOf("logged-in" to "yes", "trial" to "no"),
+            flags = mapOf("logged-in" to true, "trial" to false, "error" to false)
+        )
+        val source =
+            "$(if (logged-in == 'yes' && (trial == 'no' || error)))ONLINE$(else)OFFLINE$(endif)"
+
+        assertEquals("ONLINE", TemplateEngine.render(source, context))
+    }
+
 }
