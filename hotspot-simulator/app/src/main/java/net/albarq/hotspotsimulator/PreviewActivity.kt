@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
@@ -90,37 +89,55 @@ class PreviewActivity : Activity() {
             webChromeClient = object : WebChromeClient() {
                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
                     this@PreviewActivity.progress.progress = newProgress
-                    this@PreviewActivity.progress.visibility = if (newProgress >= 100) View.GONE else View.VISIBLE
+                    this@PreviewActivity.progress.visibility =
+                        if (newProgress >= 100) View.GONE else View.VISIBLE
                 }
 
                 override fun onConsoleMessage(message: android.webkit.ConsoleMessage?): Boolean {
                     message?.let {
-                        client.diagnostics.add(
-                            Diagnostic("JAVASCRIPT", it.sourceId(), "السطر ${it.lineNumber()}: ${it.message()}")
+                        client.recordDiagnostic(
+                            "JS_" + it.messageLevel().name,
+                            it.sourceId(),
+                            "السطر " + it.lineNumber() + ": " + it.message()
                         )
                     }
                     return true
                 }
             }
         }
+
         web.addJavascriptInterface(object {
             @JavascriptInterface
             fun submitLogin(username: String, password: String, destination: String) {
                 runOnUiThread {
-                    client.submitCredentials(username, password)
-                    if (username.isBlank()) {
-                        openPage("login")
-                    } else {
-                        // Prefer the template's own single-page transition when available.
+                    val accepted = client.submitCredentials(username, password, destination)
+                    if (!accepted) {
+                        val state = client.stateJson()
                         web.evaluateJavascript(
-                            "(function(){try{if(typeof window.onLoggedIn==='function'){window.onLoggedIn({logged_in:true});return true;}}catch(e){}return false;})()"
-                        ) { result ->
-                            if (result != "true") openPage("status")
-                        }
+                            "if(window.mikrotikPreview){window.mikrotikPreview.state=$state;" +
+                                "window.mikrotikPreview.dispatch('mikrotik-preview-login-error',$state);}",
+                            null
+                        )
+                        openPage("login")
+                        return@runOnUiThread
+                    }
+
+                    val state = client.stateJson()
+                    val callback = "(function(){var state=$state;" +
+                        "if(window.mikrotikPreview){window.mikrotikPreview.state=state;" +
+                        "window.mikrotikPreview.dispatch('mikrotik-preview-login',state);}" +
+                        "try{if(typeof window.onLoggedIn==='function'){" +
+                        "return window.onLoggedIn(state)===true;}}catch(error){console.error(error);}" +
+                        "return false;})()"
+                    web.evaluateJavascript(callback) { result ->
+                        // Templates can keep a single-page layout by returning true from onLoggedIn
+                        // or by handling the mikrotik-preview-login event and returning true.
+                        if (result != "true") openPage("status")
                     }
                 }
             }
         }, "AlbarqPreview")
+
         web.webViewClient = client
         root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
@@ -152,7 +169,7 @@ class PreviewActivity : Activity() {
     private fun showDiagnostics() {
         val warnings = files.scanWarnings
         val events = client.diagnostics.takeLast(35).map {
-            "[${it.kind}] ${it.path}\n${it.message}"
+            "[" + it.kind + "] " + it.path + "\n" + it.message
         }
         val all = warnings + events
         AlertDialog.Builder(this)
