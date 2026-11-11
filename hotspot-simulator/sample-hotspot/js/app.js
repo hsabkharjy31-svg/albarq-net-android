@@ -1,0 +1,1 @@
+document.addEventListener('DOMContentLoaded',()=>{const el=document.getElementById('boot');if(el)el.hidden=false;});window.addEventListener('mikrotik-preview-ready',()=>console.log('Preview bridge ready',window.mikrotikPreview));

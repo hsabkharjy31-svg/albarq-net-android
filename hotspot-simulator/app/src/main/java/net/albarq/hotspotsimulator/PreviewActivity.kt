@@ -1,0 +1,226 @@
+package net.albarq.hotspotsimulator
+
+import android.app.Activity
+import android.app.AlertDialog
+import android.graphics.Color
+import android.graphics.Typeface
+import android.net.Uri
+import android.os.Bundle
+import android.view.Gravity
+import android.view.View
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
+import android.widget.Toast
+import java.util.concurrent.Executors
+
+class PreviewActivity : Activity() {
+    private lateinit var files: HotspotFiles
+    private lateinit var web: WebView
+    private lateinit var progress: ProgressBar
+    private lateinit var client: PreviewClient
+    private val fileExecutor = Executors.newSingleThreadExecutor()
+    private val prefs by lazy { getSharedPreferences("preview", MODE_PRIVATE) }
+    private val navy = Color.rgb(7, 19, 41)
+    private val cyan = Color.rgb(56, 213, 255)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.statusBarColor = navy
+        window.navigationBarColor = navy
+        val selectedTree = intent.getStringExtra(EXTRA_TREE) ?: prefs.getString("tree", null)
+        files = HotspotFiles(this, selectedTree?.let { Uri.parse(it) })
+        buildPreviewScreen()
+        indexAndLoad()
+    }
+
+    private fun buildPreviewScreen() {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.WHITE)
+        }
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setBackgroundColor(navy)
+        }
+        toolbar.addView(toolButton("‹", 30f) { finish() },
+            LinearLayout.LayoutParams(dp(42), dp(46)))
+        val heading = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), 0, 0, 0)
+        }
+        heading.addView(text("معاينة الهوتسبوت", 15f, Color.WHITE, true))
+        heading.addView(text("LIVE LOCAL PREVIEW", 9f, cyan, true))
+        toolbar.addView(heading, LinearLayout.LayoutParams(0, -2, 1f))
+        toolbar.addView(toolButton("⟳", 23f) { if (::web.isInitialized) web.reload() },
+            LinearLayout.LayoutParams(dp(44), dp(44)))
+        toolbar.addView(toolButton("⋮", 23f) { showDiagnostics() },
+            LinearLayout.LayoutParams(dp(40), dp(44)))
+        root.addView(toolbar)
+
+        progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            progressTintList = android.content.res.ColorStateList.valueOf(cyan)
+            visibility = View.VISIBLE
+        }
+        root.addView(progress, LinearLayout.LayoutParams(-1, dp(3)))
+
+        client = PreviewClient(files)
+        web = WebView(this).apply {
+            setBackgroundColor(Color.WHITE)
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.loadsImagesAutomatically = true
+            settings.useWideViewPort = true
+            settings.loadWithOverviewMode = true
+            settings.setSupportZoom(true)
+            settings.builtInZoomControls = true
+            settings.displayZoomControls = false
+            settings.allowFileAccess = false
+            settings.allowContentAccess = false
+            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            webChromeClient = object : WebChromeClient() {
+                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                    this@PreviewActivity.progress.progress = newProgress
+                    this@PreviewActivity.progress.visibility =
+                        if (newProgress >= 100) View.GONE else View.VISIBLE
+                }
+
+                override fun onConsoleMessage(message: android.webkit.ConsoleMessage?): Boolean {
+                    message?.let {
+                        client.recordDiagnostic(
+                            "JS_" + it.messageLevel().name,
+                            it.sourceId(),
+                            "السطر " + it.lineNumber() + ": " + it.message()
+                        )
+                    }
+                    return true
+                }
+            }
+        }
+
+        web.addJavascriptInterface(object {
+            @JavascriptInterface
+            fun submitLogin(username: String, password: String, destination: String) {
+                runOnUiThread {
+                    val accepted = client.submitCredentials(username, password, destination)
+                    if (!accepted) {
+                        val state = client.stateJson()
+                        .replace("<", "\\u003c")
+                        .replace(">", "\\u003e")
+                        .replace("&", "\\u0026")
+                        web.evaluateJavascript(
+                            "if(window.mikrotikPreview){window.mikrotikPreview.state=$state;" +
+                                "window.mikrotikPreview.dispatch('mikrotik-preview-login-error',$state);}",
+                            null
+                        )
+                        openPage("login")
+                        return@runOnUiThread
+                    }
+
+                    val state = client.stateJson()
+                        .replace("<", "\\u003c")
+                        .replace(">", "\\u003e")
+                        .replace("&", "\\u0026")
+                    val callback = "(function(){var state=$state;" +
+                        "if(window.mikrotikPreview){window.mikrotikPreview.state=state;" +
+                        "window.mikrotikPreview.keepSinglePage=false;" +
+                        "window.mikrotikPreview.dispatch('mikrotik-preview-login',state);" +
+                        "if(window.mikrotikPreview.keepSinglePage===true)return true;}" +
+                        "try{if(typeof window.onLoggedIn==='function'){" +
+                        "return window.onLoggedIn(state)===true;}}catch(error){console.error(error);}" +
+                        "return false;})()"
+                    web.evaluateJavascript(callback) { result ->
+                        // A template can keep its single-page layout by setting
+                        // window.mikrotikPreview.keepSinglePage = true in its event handler,
+                        // or by returning true from window.onLoggedIn.
+                        if (result != "true") openPage("status")
+                    }
+                }
+            }
+        }, "AlbarqPreview")
+
+        web.webViewClient = client
+        root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
+        setContentView(root)
+    }
+
+    private fun indexAndLoad() {
+        if (files.tree == null) {
+            Toast.makeText(this, "اختر مجلد القالب من الشاشة السابقة أولاً.", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+        progress.visibility = View.VISIBLE
+        fileExecutor.execute {
+            val paths = try { files.index() } catch (e: Exception) { emptyList() }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (paths.none { it.substringAfterLast('/').equals("login.html", true) }) {
+                    Toast.makeText(this, "لم يتم العثور على login.html داخل المجلد المحدد.", Toast.LENGTH_LONG).show()
+                }
+                openPage("login")
+            }
+        }
+    }
+
+    private fun openPage(path: String) {
+        if (::web.isInitialized) web.loadUrl("https://hotspot.local/" + path.trimStart('/'))
+    }
+
+    private fun showDiagnostics() {
+        val warnings = files.scanWarnings
+        val events = client.diagnostics.takeLast(35).map {
+            "[" + it.kind + "] " + it.path + "\n" + it.message
+        }
+        val all = warnings + events
+        AlertDialog.Builder(this)
+            .setTitle("سجل المعاينة")
+            .setMessage(if (all.isEmpty()) "لم تُسجل أخطاء حتى الآن." else all.joinToString("\n\n"))
+            .setPositiveButton("إغلاق", null)
+            .show()
+    }
+
+    private fun toolButton(caption: String, size: Float, action: () -> Unit) =
+        TextView(this).apply {
+            text = caption
+            textSize = size
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { action() }
+        }
+
+    private fun text(value: String, size: Float, color: Int, bold: Boolean) =
+        TextView(this).apply {
+            text = value
+            textSize = size
+            setTextColor(color)
+            typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    companion object {
+        const val EXTRA_TREE = "net.albarq.hotspotsimulator.EXTRA_TREE"
+    }
+
+    override fun onDestroy() {
+        fileExecutor.shutdownNow()
+        if (::web.isInitialized) {
+            web.removeJavascriptInterface("AlbarqPreview")
+            web.stopLoading()
+            web.destroy()
+        }
+        super.onDestroy()
+    }
+}

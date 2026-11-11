@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>البرق نت - تسجيل الدخول</title><link rel="stylesheet" href="css/style.css"></head>
+<body><main class="card">
+<img src="img/logo.png" alt="شعار البرق نت" width="96" onerror="this.alt='الشعار غير متوفر'">
+<h1>AL-BARQ NET</h1><p>بوابة الإنترنت اللاسلكي</p>
+$(if error)<div class="error">$(error)</div>$(endif)
+<form action="$(link-login-only)" method="post">
+<label>اسم المستخدم</label><input name="username" value="$(username)" autocomplete="username">
+<label>كلمة المرور</label><input name="password" type="password" autocomplete="current-password">
+<input type="hidden" name="dst" value="$(link-orig)"><button type="submit">تسجيل الدخول</button>
+</form>
+<p class="muted">IP: $(ip) · MAC: $(mac)</p>
+<div id="boot" hidden>تم تهيئة الصفحة</div>
+</main><script src="js/app.js"></script></body></html>
