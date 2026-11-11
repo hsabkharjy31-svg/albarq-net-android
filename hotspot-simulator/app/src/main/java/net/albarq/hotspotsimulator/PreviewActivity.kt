@@ -125,13 +125,16 @@ class PreviewActivity : Activity() {
                     val state = client.stateJson()
                     val callback = "(function(){var state=$state;" +
                         "if(window.mikrotikPreview){window.mikrotikPreview.state=state;" +
-                        "window.mikrotikPreview.dispatch('mikrotik-preview-login',state);}" +
+                        "window.mikrotikPreview.keepSinglePage=false;" +
+                        "window.mikrotikPreview.dispatch('mikrotik-preview-login',state);" +
+                        "if(window.mikrotikPreview.keepSinglePage===true)return true;}" +
                         "try{if(typeof window.onLoggedIn==='function'){" +
                         "return window.onLoggedIn(state)===true;}}catch(error){console.error(error);}" +
-                        "return false;})()"
+                        "return false;})()
                     web.evaluateJavascript(callback) { result ->
-                        // Templates can keep a single-page layout by returning true from onLoggedIn
-                        // or by handling the mikrotik-preview-login event and returning true.
+                        // A template can keep its single-page layout by setting
+                        // window.mikrotikPreview.keepSinglePage = true in its event handler,
+                        // or by returning true from window.onLoggedIn.
                         if (result != "true") openPage("status")
                     }
                 }

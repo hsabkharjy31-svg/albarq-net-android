@@ -262,7 +262,7 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
             "plain-passwd" to "yes",
             "ssl-login" to "yes",
             "session-timeout" to if (loggedIn) "1h" else "",
-            "session-timeout-secs" to if (loggedIn) SESSION_LIMIT_SECONDS.toString() else "0",
+            "session-timeout-secs" to if (loggedIn) remaining.toString() else "0",
             "session-time-left" to if (loggedIn) formatDuration(remaining) else "",
             "session-time-left-secs" to if (loggedIn) remaining.toString() else "0",
             "uptime" to if (loggedIn) formatDuration(elapsed) else "",
@@ -290,7 +290,7 @@ class PreviewClient(private val files: HotspotFiles) : WebViewClient() {
             "chap-id" to false,
             "chap-challenge" to false,
             "http-chap" to false,
-            "session-time-left" to loggedIn && remaining > 0L,
+            "session-time-left" to (loggedIn && remaining > 0L),
             "remain-bytes-total" to loggedIn
         )
         return TemplateEngine.Context(values, flags)
